@@ -4,22 +4,20 @@ namespace Akizuki\ACTG;
 
 use PHPUnit\Framework\TestCase;
 use Akizuki\ACTG\CSRFToken;
-use Akizuki\ACTG\Exceptions\InvalidTokenException;
+use Akizuki\ACTG\Exceptions\{ 
+    InvalidTokenException,
+    InvalidConfigException
+};
 
 
-class ENVCSRFToken extends CSRFToken {
-    
-    protected static $SessionKey = null;
-    protected static $TokenPeriod = null;
-    protected static $SessionAutoStart = null;
-    protected static $InputName = null;
-    
-}
+class ENVCSRFToken extends CSRFToken { }
+class ENVErrorCSRFToken extends CSRFToken { }
 
 class CSRFTokenTest extends TestCase {
     
     public function setUp( ) {
-        $_SESSION = [ ];
+        
+        if( !isset( $_SESSION ) ) $_SESSION = [ ];
     }
     
     /**
@@ -74,6 +72,7 @@ class CSRFTokenTest extends TestCase {
         
         $EnvCache = $_ENV;
         $CaughtThrowable = null;
+        $_ENV = [ ];
         
         try {
             
@@ -82,6 +81,38 @@ class CSRFTokenTest extends TestCase {
             ENVCSRFToken::Verify( $t );
             
             $this->assertEquals( true, isset( $_SESSION[ '33-4 = NNDY' ] ) );
+            
+        } catch( \Throwable $t ) {
+            
+            $CaughtThrowable = $t;
+            
+        } finally {
+            
+            $_ENV = $EnvCache;
+            
+        }
+        
+        if( !is_null( $CaughtThrowable ) ) throw $CaughtThrowable;
+        
+    }
+    
+    
+    /**
+     * @test
+     */
+    public function ENVErrorValueTest( ) {
+        
+        $this->expectException( InvalidConfigException::class );
+        
+        $EnvCache = $_ENV;
+        $_ENV = [ ];
+        $CaughtThrowable = null;
+        
+        try {
+            
+            $_ENV[ ENVErrorCSRFToken::ENVTokenPeriod ] = '-1';
+            $t = ENVErrorCSRFToken::Generate( );
+            ENVErrorCSRFToken::Verify( $t );
             
         } catch( \Throwable $t ) {
             
