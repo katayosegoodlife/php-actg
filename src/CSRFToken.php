@@ -3,11 +3,12 @@
 namespace Akizuki\ACTG;
 
 use Akizuki\BSC\NonCreatable;
+use Akizuki\ACTG\Enums\ValueSource;
 use Akizuki\ACTG\Exceptions\ {
-    InvalidTokenPeriod,
     SessionInactiveException,
     InvalidTokenException,
-    EnvInvalidTokenPeriod
+    ConfigOverwrittenException,
+    InvalidConfigException
 };
 
 
@@ -15,10 +16,10 @@ use Akizuki\ACTG\Exceptions\ {
  * [ Library ] CSRF Token Generator
  *
  * Can customize behaviour by those variables.
- * - $_ENV[ 'AKIZUKI_ATGC_SESSION_KEY' ]  : int
- * - $_ENV[ 'AKIZUKI_ATGC_TOKEN_PERIOD' ] : string
+ * - $_ENV[ 'AKIZUKI_ATGC_SESSION_KEY' ]        : int
+ * - $_ENV[ 'AKIZUKI_ATGC_TOKEN_PERIOD' ]       : string
  * - $_ENV[ 'AKIZUKI_ATGC_SESSION_AUTO_START' ] : int ( will be casted to boolean )
- * - $_ENV[ 'AKIZUKI_ATGC_POST_NAME' ] : string
+ * - $_ENV[ 'AKIZUKI_ATGC_POST_NAME' ]          : string ( no validation )
  * Those values must be set before using any functions of this library.
  * Default settings and ENV settings will be overwritten by Set*** methods.
  * 
@@ -29,21 +30,24 @@ use Akizuki\ACTG\Exceptions\ {
  */
 class CSRFToken extends NonCreatable {
     
-    const DefaultSessionKey = '4kizuki/php-actg';
-    const DefaultTokenPeriod = 30 * 60;
-    const DefaultSessionAutoStart = false;
-    const DefaultInputName = 'AKIZUKI_ATGC_TOKEN';
+    // Customizable
+    protected const DefaultSessionKey = '4kizuki/php-actg';
+    protected const DefaultTokenPeriod = 30 * 60;
+    protected const DefaultSessionAutoStart = false;
+    protected const DefaultInputName = 'AKIZUKI_ATGC_TOKEN';
     
-    const ENVSessionKey = 'AKIZUKI_ATGC_SESSION_KEY';
-    const ENVTokenPeriod = 'AKIZUKI_ATGC_TOKEN_PERIOD';
-    const ENVSessionAutoStart = 'AKIZUKI_ATGC_SESSION_AUTO_START';
-    const EnvInputName = 'AKIZUKI_ATGC_POST_NAME';
+    // Customizable
+    public const ENVSessionKey = 'AKIZUKI_ATGC_SESSION_KEY';
+    public const ENVTokenPeriod = 'AKIZUKI_ATGC_TOKEN_PERIOD';
+    public const ENVSessionAutoStart = 'AKIZUKI_ATGC_SESSION_AUTO_START';
+    public const ENVInputName = 'AKIZUKI_ATGC_POST_NAME';
     
-    const key_Token = 'token';
-    const key_Expiration = 'expiration_date';
+    // Not Overridable
+    protected const key_Token = 'token';
+    protected const key_Expiration = 'expiration_date';
     
     
-    public static function GenerateHiddenInput( ) : string {
+    final public static function GenerateHiddenInput( ) : string {
         
         $g = self::Generate( );
         $p = self::GetInputName( );
@@ -52,7 +56,7 @@ class CSRFToken extends NonCreatable {
         
     }
     
-    public static function PostVerify( bool $nothrow = false ) : bool {
+    final public static function PostVerify( bool $nothrow = false ) : bool {
         
         $p = self::GetInputName( );
         $t = ( isset( $_POST[ $p ] ) ? ( $_POST[ $p ] ) : ( '' ) );
@@ -62,14 +66,14 @@ class CSRFToken extends NonCreatable {
     }
     
     
-    public static function Generate( ) : string {
+    final public static function Generate( ) : string {
         
         self::InitSession( );
         
         $t = self::GenerateRawToken( );
         $_SESSION[ self::GetSessionKey( ) ][ ] = [
             self::key_Token => $t,
-            self::key_Expiration => time( ) + self::GetTokenPeriod( )
+            self::key_Expiration => time( ) + static::GetTokenPeriod( )
         ];
         
         return $t;
@@ -77,7 +81,7 @@ class CSRFToken extends NonCreatable {
     }
     
     
-    public static function Verify( string $token, bool $nothrow = false ) : bool {
+    final public static function Verify( string $token, bool $nothrow = false ) : bool {
         
         $result = self::RawVerify( $token );
         
@@ -87,7 +91,12 @@ class CSRFToken extends NonCreatable {
         
     }
     
-    protected static function RawVerify( string $token ) : bool {
+    /***************************************************************************
+     * 
+     * Helper Functions
+     * 
+     **************************************************************************/
+    final protected static function RawVerify( string $token ) : bool {
         
         self::InitSession( );
         
@@ -103,7 +112,7 @@ class CSRFToken extends NonCreatable {
         
     }
     
-    protected static function GenerateRawToken( ) : string {
+    final protected static function GenerateRawToken( ) : string {
         
         return str_replace(
             [ '+', '/' ],
@@ -113,28 +122,25 @@ class CSRFToken extends NonCreatable {
         
     }
     
-    protected static function IsSessionActive( ) : bool {
+    final protected static function IsSessionActive( ) : bool {
         
         return isset( $_SESSION );
         
     }
     
-    
-    protected static function InitSession( ) {
+    private static $initialized = [ ];
+    final protected static function InitSession( ) {
+        
+        if( isset( self::$initialized[ static::class ] ) ) return;
         
         // Session not began
         if( !self::IsSessionActive( ) ) {
-            
-            if( self::GetSessionAutoStart( ) ) {
-                session_start( );
-            } else {
-                throw SessionInactiveException;
-            }
-            
+            if( !self::GetSessionAutoStart( ) ) throw SessionInactiveException;
+            session_start( );
         }
         
         $key = self::GetSessionKey( );
-        
+         
         // Prepare Array
         if( !isset( $_SESSION[ $key ] ) or !is_array( $_SESSION[ $key ] ) )
             $_SESSION[ $key ] = [ ];
@@ -152,6 +158,8 @@ class CSRFToken extends NonCreatable {
         
         if( $removed ) $_SESSION[ $key ] = array_values( $_SESSION[ $key ] );
         
+        self::$initialized[ static::class ] = true;
+        
     }
     
     
@@ -163,108 +171,195 @@ class CSRFToken extends NonCreatable {
      * 
      **************************************************************************/
     
-    protected static $SessionKey = null;
+    private static $values = [ ];
+    private const akSessionKey = 'Session Key';
+    private const akTokenPeriod = 'Token Period';
+    private const akSessionAutoStart = 'Session Auto Start';
+    private const akInputName = 'HTML Input Name';
     
-    public static function SetSessionKey( string $key ) : void {
+    final private static function SetConfig( $value, string $key, ValueSource $source, ?callable $validator = null ) : void {
         
-        static::$SessionKey = $key;
+        if( isset( self::$values[ static::class ][ $key ] ) )
+            throw ConfigOverwrittenException( static::class, $key );
+        
+        if( !is_null( $validator ) ) $value = $validator( $value, $source );
+        
+        self::$values[ static::class ][ $key ] = $value;
         
     }
     
-    protected static function GetSessionKey( ) : string {
+    final private static function GetConfig( string $key, string $envKey, string $defaultValue, ?callable $validator = null ) {
         
-        if( !is_null( static::$SessionKey ) ) return static::$SessionKey;
+        if( isset( self::$values[ static::class ][ $key ] ) )
+            return self::$values[ static::class ][ $key ];
         
-        if( isset( $_ENV[ self::ENVSessionKey ] )
-            &&  is_string( $_ENV[ self::ENVSessionKey ] ) ) {
+        if( isset( $_ENV[ $envKey ] )
+            && is_string( $_ENV[ $envKey ] ) ) {
             
-            self::SetSessionKey( $_ENV[ self::ENVSessionKey ] );
-            return self::GetSessionKey( );
+            self::SetConfig( $_ENV[ $envKey ], $key, new ValueSource( ValueSource::FromEnvValue ), $validator );
+            return self::GetConfig( $key, $envKey, $defaultValue );
             
         }
         
-        return self::DefaultSessionKey;
+        self::SetConfig( $defaultValue, $key, new ValueSource( ValueSource::FromConstant ), $validator );
+        return $defaultValue;
         
     }
     
-    protected static $TokenPeriod = null;
-    
-    public static function SetTokenPeriod( int $period ) : void {
+    /***************************************************************************
+     * 
+     * Value Generator - Session Key
+     * 
+     **************************************************************************/
+    final public static function SetSessionKey( string $key ) : void {
         
-        if( $period <= 0 ) throw new InvalidTokenPeriod;
-        static::$TokenPeriod = $period;
-        
-    }
-    
-    protected static function GetTokenPeriod( ) : int {
-        
-        if( !is_null( static::$TokenPeriod ) ) return static::$TokenPeriod;
-        
-        if( isset( $_ENV[ self::ENVTokenPeriod ] ) ) {
-            
-            if( !is_numeric( $_ENV[ self::ENVTokenPeriod ] ) ) {
-                throw new EnvInvalidTokenPeriod;
-            }
-            
-            $ip = ( int ) $_ENV[ self::ENVTokenPeriod ];
-            
-            if( $ip <= 0 ) throw new EnvInvalidTokenPeriod;
-            
-            self::SetTokenPeriod( $ip );
-            return self::GetTokenPeriod( );
-            
-        }
-        
-        return self::DefaultTokenPeriod;    
+        self::SetConfig(
+                $key,
+                self::akSessionKey,
+                new ValueSource( ValueSource::FromSetter ),
+                self::ValidateSessionKey( )
+        );
         
     }
     
-    protected static $SessionAutoStart = null;
-    
-    public static function SetSessionAutoStart( bool $autoStart ) : void {
+    final public static function GetSessionKey( ) : string {
         
-        static::$SessionAutoStart = $autoStart;
-        
-    }
-    
-    protected static function GetSessionAutoStart( ) : bool {
-        
-        if( !is_null( static::$SessionAutoStart ) ) return static::$SessionAutoStart;
-        
-        if( isset( $_ENV[ self::ENVSessionAutoStart ] )
-            &&  is_numeric( $_ENV[ self::ENVSessionAutoStart ] ) ) {
-            
-            self::SetSessionAutoStart( (bool) ( (int) $_ENV[ self::ENVTokenPeriod ] ) );
-            return self::GetSessionAutoStart( );
-            
-        }
-        
-        return self::DefaultSessionAutoStart;
+        return self::GetConfig(
+                self::akSessionKey,
+                static::ENVSessionKey,
+                static::DefaultSessionKey,
+                self::ValidateSessionKey( )
+        );
         
     }
     
-    protected static $InputName = null;
-    
-    public static function SetInputName( string $inputName ) : void {
+    final private static function ValidateSessionKey( $value = null, ?ValueSource $source = null ) : string {
         
-        static::$InputName = $inputName;
+        if( is_null( $source ) ) return __METHOD__;
         
-    }
-    
-    protected static function GetInputName( ) : string {
+        if( !is_string( $value ) && !is_int( $value ) )
+            throw new InvalidConfigException( self::akSessionKey, $source );
         
-        if( !is_null( static::$InputName ) ) return static::$InputName;
-        
-        if( isset( $_ENV[ self::EnvInputName ] )
-            &&  is_string( $_ENV[ self::EnvInputName ] ) ) {
-            
-            self::SetInputName( (string) $_ENV[ self::EnvInputName ] );
-            return self::GetInputName( );
-            
-        }
-        
-        return self::DefaultInputName;
+        return (string) $value;
         
     }
     
+    /***************************************************************************
+     * 
+     * Value Generator - Token Period
+     * 
+     **************************************************************************/
+    final public static function SetTokenPeriod( int $period ) : void {
+        
+        self::SetConfig(
+                $period,
+                self::akTokenPeriod,
+                new ValueSource( ValueSource::FromSetter ),
+                self::ValidateTokenPeriod( )
+        );
+        
+    }
+    
+    final public static function GetTokenPeriod( ) : int {
+        
+        return self::GetConfig(
+                self::akTokenPeriod,
+                static::ENVTokenPeriod,
+                static::DefaultTokenPeriod,
+                self::ValidateTokenPeriod( )
+        );
+        
+    }
+    
+    final private static function ValidateTokenPeriod( $value = null, ?ValueSource $source = null ) {
+        
+        if( is_null( $source ) ) return __METHOD__;
+        
+        if( !is_numeric( $value ) )
+            throw new InvalidConfigException( self::akTokenPeriod, $source );
+        
+        $intValue = (int) $value;
+        
+        if( $intValue <= 0 ) throw new InvalidConfigException( self::akTokenPeriod, $source );
+        
+        return $intValue;
+        
+    }
+    
+    
+    
+    /***************************************************************************
+     * 
+     * Value Generator - Session Auto Start
+     * 
+     **************************************************************************/
+    final public static function SetSessionAutoStart( bool $autoStart ) : void {
+        
+        self::SetConfig(
+                $autoStart,
+                self::akSessionAutoStart,
+                new ValueSource( ValueSource::FromSetter ),
+                self::ValidateSessionAutoStart( )
+        );
+        
+    }
+    
+    final public static function GetSessionAutoStart( ) : bool {
+        
+        return self::GetConfig(
+                self::akSessionAutoStart,
+                static::ENVSessionAutoStart,
+                static::DefaultSessionAutoStart,
+                self::ValidateSessionAutoStart( ) );
+        
+    }
+    
+    final private static function ValidateSessionAutoStart( $value = null, ?ValueSource $source = null ) {
+        
+        if( is_null( $source ) ) return __METHOD__;
+        
+        if( !is_numeric( $value ) )
+            throw new InvalidConfigException( self::akSessionAutoStart, $source );
+        
+        return (bool) (int) $value;
+        
+    }
+    
+    /***************************************************************************
+     * 
+     * Value Generator - HTML Input Name
+     * 
+     **************************************************************************/
+    final public static function SetInputName( string $inputName ) : void {
+        
+        self::SetConfig(
+                $inputName,
+                self::akInputName,
+                new ValueSource( ValueSource::FromSetter ),
+                self::ValidateInputName( )
+        );
+        
+    }
+    
+    final public static function GetInputName( ) : string {
+        
+        return self::GetConfig(
+                self::akInputName,
+                static::ENVInputName,
+                static::DefaultInputName,
+                self::ValidateInputName( )
+        );
+        
+    }
+    
+    final private static function ValidateInputName( $value = null, ?ValueSource $source = null ) : string {
+        
+        if( is_null( $source ) ) return __METHOD__;
+        
+        if( !is_string( $value ) )
+            throw new InvalidConfigException( self::akInputName, $source );
+        
+        return (string) $value;
+        
+    }
 }
