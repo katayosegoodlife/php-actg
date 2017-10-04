@@ -3,7 +3,7 @@
     "description": "Anti CSRF Token Generator for PHP",
     "type": "library",
     "require": {
-        "php": "^7.0.0",
+        "php": "^7.1.0",
         "4kizuki/php-bsc": "^1.0",
         "4kizuki/php-enum": "^1.0"
     },
