@@ -16,10 +16,10 @@ use Akizuki\ACTG\Exceptions\ {
  * [ Library ] CSRF Token Generator
  *
  * Can customize behaviour by those variables.
- * - $_ENV[ 'AKIZUKI_ATGC_SESSION_KEY' ]        : int
- * - $_ENV[ 'AKIZUKI_ATGC_TOKEN_PERIOD' ]       : string
- * - $_ENV[ 'AKIZUKI_ATGC_SESSION_AUTO_START' ] : int ( will be casted to boolean )
- * - $_ENV[ 'AKIZUKI_ATGC_POST_NAME' ]          : string ( no validation )
+ * - $_ENV[ 'AKIZUKI_ATGC_SESSION_KEY' ]        : string  ( no regex validation )
+ * - $_ENV[ 'AKIZUKI_ATGC_TOKEN_PERIOD' ]       : numeric ( greater than 0 )
+ * - $_ENV[ 'AKIZUKI_ATGC_SESSION_AUTO_START' ] : numeric ( casted to boolean )
+ * - $_ENV[ 'AKIZUKI_ATGC_POST_NAME' ]          : string  ( no regex validation )
  * Those values must be set before using any functions of this library.
  * Default settings and ENV settings will be overwritten by Set*** methods.
  * 
