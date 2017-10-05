@@ -135,7 +135,7 @@ class CSRFToken extends NonCreatable {
         
         // Session not began
         if( !self::IsSessionActive( ) ) {
-            if( !self::GetSessionAutoStart( ) ) throw SessionInactiveException;
+            if( !self::GetSessionAutoStart( ) ) throw new SessionInactiveException;
             session_start( );
         }
         
@@ -180,7 +180,7 @@ class CSRFToken extends NonCreatable {
     final private static function SetConfig( $value, string $key, ValueSource $source, ?callable $validator = null ) : void {
         
         if( isset( self::$values[ static::class ][ $key ] ) )
-            throw ConfigOverwrittenException( static::class, $key );
+            throw new ConfigOverwrittenException( static::class, $key );
         
         if( !is_null( $validator ) ) $value = $validator( $value, $source );
         
